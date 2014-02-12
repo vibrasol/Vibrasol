@@ -42,7 +42,7 @@
 int sensorPin   = A0;      // select the input pin for the potentiometer
 int motorPin    = 13;     // select 13 for UNO board or 2 for NANO board
 
-#define LIMIT  3         
+#define LIMIT  30         
 int p = 0;                              // variable to store the value coming from the sensor
 int th_correctposture = 105;             // controls min pressure to activate motor. It is sensor/shoe dependent
 int foot_on_air = 20;             
@@ -58,7 +58,8 @@ int elapsed = 0;          // number samples elapsed
 int log_addr = 0;         // address index of last log
 int OVERHEAD = 4;
 int EPROM_SIZE = 1023;   // 1024 BYTES in ARDUINO UNO        
-int LOG_RATE =1;      // logs number of bad posture every LOG_RATE minutes;
+int LOG_RATE =15;      // logs number of bad posture every LOG_RATE minutes;
+int p_zero = 0;
 
 char whatsup;
 boolean debug_flag = false;
@@ -127,8 +128,7 @@ void logit(){
     }else{
        if (debug_flag)
          Serial.println("MEM FULL(!) CANNOT LOG DATA");
-         vibrate(10,165,165);
-         exit(-1);
+       vibrate(10,500,500);
     }
 
 }
@@ -143,6 +143,8 @@ void sample() {
     Serial.print( log_addr ); 
     Serial.print( " elapsed : "); 
     Serial.print( elapsed ); 
+    Serial.print( " p_zero : "); 
+    Serial.print( p_zero ); 
     Serial.print( " pressure : ");  
     Serial.println( p );
    
@@ -225,8 +227,20 @@ void loop() {
     if (debug_flag){
       Serial.println( "Warning user ");
     }
-
   }
+
+  //check presure sensor makes contact
+  if (p<1) {
+    p_zero ++;
+  }
+  if (p_zero > 2* limit) {
+    p_zero = 0;
+    if (debug_flag) {
+       Serial.write("Is sensor conected?");
+    }
+    vibrate(4,365,65);
+  }
+
 
 
 }
