@@ -148,7 +148,7 @@ void sample() {
    
   }
 
-  if ( elapsed*(sampling_t/100)  > (LOG_RATE*60)){ //*10) ){ // compared in 10ths of seconds. int range is 32k check saturation!
+  if ( elapsed*(sampling_t/100)  > (LOG_RATE*60*10) ){ // compared in 10ths of seconds. int range is 32k check saturation!
     
     logit();
     elapsed = 0;
@@ -194,8 +194,10 @@ void listen(){
       send_data_usart();
       break;
     case '0':
-      writeW(0,OVERHEAD);
+      log_addr = OVERHEAD;
+      writeW( 0, log_addr );
       Serial.println("reset done");
+      
       break;
   }
   
