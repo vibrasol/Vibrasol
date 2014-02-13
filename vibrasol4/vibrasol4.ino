@@ -6,7 +6,7 @@
  The circuit:
  -----------------------------------
  * 1.  3.3V Output - Resistive pressure sensor (placed in x position) - A0 input
- * 2.  A0 inptut - 75K Ohm (purple red orange ) resistor - GND
+ * 2.             inptut - 75K Ohm (purple red orange ) resistor - GND
  * 3.  Output 13 - Vibrator motor (flat coin type, in contact with skin, 5V) - GND
  
      _ _
@@ -93,6 +93,13 @@ void setup() {
   
   Serial.print(   "user_id = " );
   Serial.println(  readW(2)    );
+  sos();
+}
+
+void sos(){
+  vibrate(3,100,100);
+  vibrate(3,200,100);
+  vibrate(3,100,100);
 }
 
 void vibrate(int n,int b, int c) {
