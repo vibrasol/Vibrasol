@@ -24,7 +24,7 @@
 
  (a) Strap Arduino (and vibrator) here
  (b) 4-pin usb cable to Nokia battery pack which is in a side pocket
- (x) Optimal placement of the pressure resisitve sensor to detect over-pronation. win
+ (x) Optimal placement of the pressure resisitve sensor to detect over-pronation. 
      Place on the opposite side (outer) if using right foot.
      One sensor on one leg is enough to give biofeedback if you mirror both legs.
 
@@ -53,12 +53,12 @@ int limit = LIMIT;        // warn user if overpronated for longer that sampling_
 boolean badposture = false;  // temp variable
 int warncount = 0;        // number warnings to user
 int badcount = 0;         // temporary overpronation counter
-int cyclebadcount = 0;    // total number of samples where p < th
+int cyclebadcount = 0;    // total number of samples where p < th for more thanbadcount
 int elapsed = 0;          // number samples elapsed
 int log_addr = 0;         // address index of last log
 int OVERHEAD = 4;
 int EPROM_SIZE = 1023;   // 1024 BYTES in ARDUINO UNO        
-int LOG_RATE =15;      // logs number of bad posture every LOG_RATE minutes;
+int LOG_RATE =15;      // logs cyclebadcount every LOG_RATE minutes;
 int p_zero = 0;
 
 char whatsup;
@@ -83,9 +83,6 @@ int readW( int from) {
 void setup() {
   pinMode(motorPin, OUTPUT); 
   Serial.begin(115200);
-  vibrate(2,300,65);
-  // writeW(2,1); // UNCOMMENT THIS TO RESET LOGS ONLY
-  // writeW(0,4); // UNCOMMENT THIS DO THIS TO SET UID
 
   log_addr = readW(0);
   Serial.print(   "number of logs in EEPROM = " );
@@ -93,14 +90,26 @@ void setup() {
   
   Serial.print(   "user_id = " );
   Serial.println(  readW(2)    );
-  sos();
+  hello();
+  warn();
 }
 
-void sos(){
-  vibrate(3,100,100);
-  vibrate(3,200,100);
-  vibrate(3,100,100);
+void hello(){
+  vibrate(1,1000,1000);
 }
+
+void warn(){
+  vibrate(2,255,255);
+}
+
+void malfunction(){
+  vibrate(3,2000,300);
+}
+
+void mem_full_warn(){
+  vibrate(2,2000,300);
+}
+
 
 void vibrate(int n,int b, int c) {
   for(int i=0;i<n;i++){
@@ -133,9 +142,9 @@ void logit(){
        cyclebadcount = 0;
 
     }else{
-       if (debug_flag)
+      if (debug_flag)
          Serial.println("MEM FULL(!) CANNOT LOG DATA");
-       vibrate(10,500,500);
+      mem_full_warn();
     }
 
 }
@@ -230,25 +239,28 @@ void loop() {
   if (badcount > limit) {
     cyclebadcount ++;
     badcount = 0;
-    vibrate(3,65,65);
     if (debug_flag){
       Serial.println( "Warning user ");
     }
+    warn();
   }
 
   //check presure sensor makes contact
+  /*
   if (p<1) {
     p_zero ++;
+  }else{
+    p_zero=0;
   }
-  if (p_zero > 2* limit) {
+  
+  if (p_zero > 4* limit) {
     p_zero = 0;
     if (debug_flag) {
        Serial.write("Is sensor conected?");
     }
-    vibrate(4,365,65);
+    malfunction(); 
   }
-
-
+  */
 
 }
 
