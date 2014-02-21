@@ -1,7 +1,13 @@
 /*
  VibraSol code for Arduino  - 
- Purpose: Hallux Valgus treatment/prevention by using your own muscles without orthotics.
- Disclaimer: Use at your own risk. Consult a podiatrist to calibrate variable "th_correctposture"
+ Purpose: 
+ * Hallux Valgus treatment/prevention by using your own muscles without orthotics.
+ * Fisio / Rehab
+ * Idiopathic foot syndrome
+ * Down syndrome walk teaching
+ * Pronation detection (for marathon runners)
+ *
+ Disclaimer: Use at your own risk. Consult a podiatrist to calibrate variable "SENSOR_PRESSURE_LEVEL"
              To claibrate you can use the com port to monitor sensor output. 
  The circuit:
  -----------------------------------
@@ -34,35 +40,48 @@
  Pat. Pend. This code is in the public domain.
  Last revision v.4 of Feb 12th 2014
  Logs data to eeprom & debug keys by Michael Fritschi, Tiago Docilio
+ +[mf, 19.2.14]: add settings for cheapduino (use Arduino NG/ATmega8 board settings)
  */
 
 
 #include <EEPROM.h>
 
-int sensorPin   = A0;      // select the input pin for the potentiometer
-int motorPin    = 13;     // select 13 for UNO board or 2 for NANO board
+// Device specific definitions
 
-#define LIMIT  30         
-int p = 0;                              // variable to store the value coming from the sensor
-int th_correctposture = 105;             // controls min pressure to activate motor. It is sensor/shoe dependent
-int foot_on_air = 20;             
+#if defined(__AVR_ATmega8__)        // Settings for CheapDuino (Arduino NG/ATmega8A)
+  #define EPROM_SIZE  511           // only 512bytes for cheapduino
+  #define SENSOR_PIN  0             // Sensor imput pin
+  #define MOTOR_PIN   9             // ...where the vibration motor is connected to
+#else
+  #define EPROM_SIZE  1023          // 1024 BYTES in ARDUINO UNO        
+  #define SENSOR_PIN  0             // Sensor imput pin
+  #define MOTOR_PIN   12            // ...where the vibration motor is connected to
+#endif
 
-float sampling_t = 300;     // samplign rate millis
-int limit = LIMIT;        // warn user if overpronated for longer that sampling_t x limit
+// General definition/parameters
 
-boolean badposture = false;  // temp variable
-int warncount = 0;        // number warnings to user
-int badcount = 0;         // temporary overpronation counter
-int cyclebadcount = 0;    // total number of samples where p < th for more thanbadcount
-int elapsed = 0;          // number samples elapsed
-int log_addr = 0;         // address index of last log
-int OVERHEAD = 4;
-int EPROM_SIZE = 1023;   // 1024 BYTES in ARDUINO UNO        
-int LOG_RATE =15;      // logs cyclebadcount every LOG_RATE minutes;
+#define LIMIT                  30   // warn user if overpronated for longer that sampling_t x limit
+#define OVERHEAD               4
+#define SENSOR_PRESSURE_LEVEL  270  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104
+#define FOOT_ON_AIR            70   // ???  jose 20 vivobarefoot
+#define SAMPLE_TIME            300  // Sampling rate [ms]
+#define LOG_RATE               15   // time delay for logging bad-count [minutes]
+
+
+int p = 0;                          // variable to store the value coming from the sensor
+int warncount = 0;                  // number warnings to user
+int badcount = 0;                   // temporary overpronation counter
+int cyclebadcount = 0;              // total number of samples where p < th for more thanbadcount
+int elapsed = 0;                    // number samples elapsed
+int log_addr = 0;                   // address index of last log
 int p_zero = 0;
 
 char whatsup;
+
 boolean debug_flag = false;
+boolean badposture = false;  // temp variable
+
+
 
 //  EPROM MAP by BYTE
 //     0     1         2      3     4    5  6  7  8  9 10 11 .... EPROM_SIZE_1023 
@@ -76,12 +95,12 @@ void writeW(int where, int x) {
 }
 
 int readW( int from) {
-  return  255 * EEPROM.read(from) + EEPROM.read(from+1);
-  
+  return  255 * EEPROM.read(from) + EEPROM.read(from+1); 
 }
 
+// -- SETUP
 void setup() {
-  pinMode(motorPin, OUTPUT); 
+  pinMode(MOTOR_PIN, OUTPUT); 
   Serial.begin(115200);
 
   log_addr = readW(0);
@@ -113,9 +132,9 @@ void mem_full_warn(){
 
 void vibrate(int n,int b, int c) {
   for(int i=0;i<n;i++){
-    digitalWrite(motorPin, HIGH);
+    digitalWrite(MOTOR_PIN, HIGH);
     delay(b);
-    digitalWrite(motorPin, LOW);
+    digitalWrite(MOTOR_PIN, LOW);
     delay(c);
     warncount ++;
     
@@ -150,23 +169,23 @@ void logit(){
 }
 
 void sample() {
-  delay(sampling_t);
+  delay(SAMPLE_TIME);
   listen();
   elapsed ++;
-  p = analogRead(sensorPin);
+  p = analogRead(SENSOR_PIN);
   if (debug_flag) {
     Serial.print( "log_adr : "); 
     Serial.print( log_addr ); 
     Serial.print( " elapsed : "); 
     Serial.print( elapsed ); 
-    Serial.print( " p_zero : "); 
-    Serial.print( p_zero ); 
+    //Serial.print( " p_zero : "); 
+    //Serial.print( p_zero ); 
     Serial.print( " pressure : ");  
     Serial.println( p );
    
   }
 
-  if ( elapsed*(sampling_t/100)  > (LOG_RATE*60*10) ){ // compared in 10ths of seconds. int range is 32k check saturation!
+  if ( elapsed*(SAMPLE_TIME/100)  > (LOG_RATE*60*10) ){ // compared in 10ths of seconds. int range is 32k check saturation!
     
     logit();
     elapsed = 0;
@@ -189,7 +208,7 @@ void send_data_usart(){
   Serial.print("\t");
   Serial.println(readW(2));
 
-  for (int i=OVERHEAD; i<=log_addr; i++){
+  for (int i=OVERHEAD; i<log_addr; i++){
     Serial.print(i-3,DEC);
     Serial.print("\t");
     Serial.println(EEPROM.read(i),DEC);
@@ -202,18 +221,20 @@ void listen(){
   whatsup = Serial.read();
   
   switch(whatsup) {
-    case 'D':
+    
+    case 'D': //Debug on
       debug_flag = true;
       break;
-    case 'd':
+    case 'd': //Debug off
       debug_flag = false;
       break;
-    case 'h':
+    case 'h': //Dump stored values to USART
       send_data_usart();
       break;
-    case '0':
+    case '0': //Reset EEPROM
       log_addr = OVERHEAD;
-      writeW( 0, log_addr );
+      writeW( 0, log_addr ); // pos  
+      writeW( 2, 1 ); // uid = 1
       Serial.println("reset done");
       
       break;
@@ -222,11 +243,13 @@ void listen(){
 
 }
 
+// -- MAIN LOOP
+
 void loop() {
   
   sample();
  
-  if (p < th_correctposture && !(p < foot_on_air)) {
+  if (p < SENSOR_PRESSURE_LEVEL && !(p < FOOT_ON_AIR)) {
      badposture = true;
      badcount ++;
 
@@ -236,7 +259,7 @@ void loop() {
 
   }
   
-  if (badcount > limit) {
+  if (badcount > LIMIT) {
     cyclebadcount ++;
     badcount = 0;
     if (debug_flag){
@@ -245,22 +268,5 @@ void loop() {
     warn();
   }
 
-  //check presure sensor makes contact
-  /*
-  if (p<1) {
-    p_zero ++;
-  }else{
-    p_zero=0;
-  }
-  
-  if (p_zero > 4* limit) {
-    p_zero = 0;
-    if (debug_flag) {
-       Serial.write("Is sensor conected?");
-    }
-    malfunction(); 
-  }
-  */
-
+ 
 }
-
