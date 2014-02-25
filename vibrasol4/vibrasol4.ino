@@ -41,46 +41,47 @@
  Last revision v.4 of Feb 12th 2014
  Logs data to eeprom & debug keys by Michael Fritschi, Tiago Docilio
  +[mf, 19.2.14]: add settings for cheapduino (use Arduino NG/ATmega8 board settings)
+ +[jb, 25.2.14]: fix bug that prevented bad posture waring while walking)
  */
 
 
 #include <EEPROM.h>
 
-// Device specific definitions
+#define SENSOR_PIN  0             // Sensor input pin
 
+// Device specific definitions
 #if defined(__AVR_ATmega8__)        // Settings for CheapDuino (Arduino NG/ATmega8A)
   #define EPROM_SIZE  511           // only 512bytes for cheapduino
-  #define SENSOR_PIN  0             // Sensor imput pin
   #define MOTOR_PIN   9             // ...where the vibration motor is connected to
 #else
   #define EPROM_SIZE  1023          // 1024 BYTES in ARDUINO UNO        
-  #define SENSOR_PIN  0             // Sensor imput pin
-  #define MOTOR_PIN   12            // ...where the vibration motor is connected to
+  #define MOTOR_PIN   12            // 13 or 12 in some select models!!!!!!!!!!!!!!!!!!! ...where the vibration motor is connected to
 #endif
 
 // General definition/parameters
-
-#define LIMIT                  30   // warn user if overpronated for longer that sampling_t x limit
+#define LIMIT                  30   // warn user if overpronated for longer that LIMIT samples sampled at 1/SAMPLE_TIME rate
 #define OVERHEAD               4
-#define SENSOR_PRESSURE_LEVEL  270  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104
-#define FOOT_ON_AIR            70   // ???  jose 20 vivobarefoot
+#define SENSOR_PRESSURE_LEVEL  280  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104
+#define FOOT_ON_AIR            50   // ???  jose 20 vivobarefoot
 #define SAMPLE_TIME            300  // Sampling rate [ms]
 #define LOG_RATE               15   // time delay for logging bad-count [minutes]
 
 
-int p = 0;                          // variable to store the value coming from the sensor
-int warncount = 0;                  // number warnings to user
-int badcount = 0;                   // temporary overpronation counter
-int cyclebadcount = 0;              // total number of samples where p < th for more thanbadcount
-int elapsed = 0;                    // number samples elapsed
-int log_addr = 0;                   // address index of last log
-int p_zero = 0;
+unsigned int p = 0;                          // variable to store the value coming from the sensor
+unsigned int cycle_warns = 0;             // total number of samples where p < th for more thanbadcount
+unsigned int elapsed = 0;                    // number samples elapsed ina LOG_RATE period
 
+unsigned int last_warn = 0;                  // when was the last time we warned a user
+unsigned int log_addr = 0;                   // address index of last log
+
+unsigned int p_h[LIMIT];
 char whatsup;
 
 boolean debug_flag = false;
-boolean badposture = false;  // temp variable
 
+// stats ---
+unsigned int n_high = 0;
+unsigned int n_low = 0;
 
 
 //  EPROM MAP by BYTE
@@ -100,6 +101,7 @@ int readW( int from) {
 
 // -- SETUP
 void setup() {
+
   pinMode(MOTOR_PIN, OUTPUT); 
   Serial.begin(115200);
 
@@ -110,25 +112,34 @@ void setup() {
   Serial.print(   "user_id = " );
   Serial.println(  readW(2)    );
   hello();
-  warn();
+  hello();
+
 }
 
 void hello(){
-  vibrate(1,1000,1000);
+    vibrate(1,1000,1000);
 }
 
 void warn(){
-  vibrate(2,255,255);
+  if ( elapsed - last_warn > LIMIT ) {
+    vibrate(2,255,255);
+    last_warn = elapsed;
+    cycle_warns++;
+    if (debug_flag){
+      Serial.println( "Warning user ");
+    }
+
+  }
 }
 
 void malfunction(){
   vibrate(3,2000,300);
+  Serial.println( "Error ");
 }
 
 void mem_full_warn(){
-  vibrate(2,2000,300);
+  vibrate(5,2000,300);
 }
-
 
 void vibrate(int n,int b, int c) {
   for(int i=0;i<n;i++){
@@ -136,7 +147,6 @@ void vibrate(int n,int b, int c) {
     delay(b);
     digitalWrite(MOTOR_PIN, LOW);
     delay(c);
-    warncount ++;
     
   }
 }
@@ -144,21 +154,21 @@ void vibrate(int n,int b, int c) {
 void logit(){
  
     if ( log_addr < EPROM_SIZE  ) {
-       if (cyclebadcount > 255) {
-          cyclebadcount = 255;
+       if (cycle_warns > 255) {
+          cycle_warns = 255;
        }
        log_addr ++;
        writeW(0,log_addr);
        delay(10);
-       EEPROM.write(log_addr, cyclebadcount);
+       EEPROM.write(log_addr, cycle_warns);
        delay(10);
        if (debug_flag) {
          Serial.print("logging : ");
-         Serial.print(cyclebadcount);
+         Serial.print(cycle_warns);
          Serial.print(" at ");
          Serial.println(log_addr);
        }
-       cyclebadcount = 0;
+       cycle_warns = 0;
 
     }else{
       if (debug_flag)
@@ -173,22 +183,22 @@ void sample() {
   listen();
   elapsed ++;
   p = analogRead(SENSOR_PIN);
+  p_h[ elapsed % LIMIT ] = p;
+  
   if (debug_flag) {
-    Serial.print( "log_adr : "); 
-    Serial.print( log_addr ); 
     Serial.print( " elapsed : "); 
     Serial.print( elapsed ); 
     //Serial.print( " p_zero : "); 
     //Serial.print( p_zero ); 
     Serial.print( " pressure : ");  
-    Serial.println( p );
-   
+    Serial.print( p );
+    //for (int i=0; i<LIMIT;i++) {    Serial.print( " :  " + p_h[i] );  }
   }
-
+   
   if ( elapsed*(SAMPLE_TIME/100)  > (LOG_RATE*60*10) ){ // compared in 10ths of seconds. int range is 32k check saturation!
-    
     logit();
     elapsed = 0;
+    last_warn = 0;
   }
   // --- END EEPROM -------------
 
@@ -232,9 +242,9 @@ void listen(){
       send_data_usart();
       break;
     case '0': //Reset EEPROM
-      log_addr = OVERHEAD;
-      writeW( 0, log_addr ); // pos  
-      writeW( 2, 1 ); // uid = 1
+      log_addr = OVERHEAD;      // reset log_add to start pos = OVERHEAD
+      writeW( 0, OVERHEAD );   // reset first record pos  = OVERHEAD
+      writeW( 2, 1 );         // default  uid = 1
       Serial.println("reset done");
       
       break;
@@ -248,25 +258,30 @@ void listen(){
 void loop() {
   
   sample();
- 
-  if (p < SENSOR_PRESSURE_LEVEL && !(p < FOOT_ON_AIR)) {
-     badposture = true;
-     badcount ++;
 
-  }else{
-     badposture = false;
-     badcount = 0;
-
+  // -- stats  
+  n_high = 0;
+  n_low=0;
+  for (int k=0; k<LIMIT;k++){
+     if (p_h[k] > SENSOR_PRESSURE_LEVEL )  
+       n_high++;
+     if (p_h[k] < FOOT_ON_AIR           ) 
+       n_low++;
+     //if (debug_flag){ 
+     //    Serial.print( ":");         
+     //    Serial.print( p_h[k]);         
+     //}
   }
-  
-  if (badcount > LIMIT) {
-    cyclebadcount ++;
-    badcount = 0;
-    if (debug_flag){
-      Serial.println( "Warning user ");
-    }
+  if (debug_flag){ 
+     Serial.print( " n_high : ");
+     Serial.print( n_high );
+     Serial.print( " n_low : ");
+     Serial.println( n_low );
+     
+  }
+
+  // WARNING LOGIC --- 
+  if ( n_high == 0 && (n_low < 25)  ) // out of LIMIT = 30
     warn();
-  }
 
- 
 }
