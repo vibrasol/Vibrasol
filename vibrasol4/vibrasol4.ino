@@ -41,7 +41,7 @@
  Last revision v.4 of Feb 12th 2014
  Logs data to eeprom & debug keys by Michael Fritschi, Tiago Docilio
  +[mf, 19.2.14]: add settings for cheapduino (use Arduino NG/ATmega8 board settings)
- +[jb, 25.2.14]: fix bug that prevented bad posture waring while walking)
+ +[jb, 25.2.14]: fix bug that prevented bad posture tracking while walking)
  */
 
 
