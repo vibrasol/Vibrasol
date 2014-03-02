@@ -61,8 +61,8 @@
 #define SENSOR_PRESSURE_LEVEL  150  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104 jose snadal 150
 #define FOOT_ON_AIR            50   // ???  jose 20 vivobarefoot
 #define SAMPLE_TIME            300  // Sampling rate [ms]
-#define LOG_RATE               0.25    // time delay for logging bad-count [minutes]
-#define N                      50   // ! Over 500 not enough SRAM!!   
+#define LOG_RATE               2.5    // time delay for logging bad-count [minutes]
+#define N                      500   // ! Over 500 not enough SRAM!!   
                                // samples recordeed per cycle. Can be less that LOGRATE/SAMPLE_TIME .... 500 = 2.5 x 60s @(1/0.3) Hz 
                                      // A cycle LOG_RATE = SAMPLE TIME * N       
 #define M                      8    // size of cycle write   
@@ -186,7 +186,7 @@ void stepcounter(){
 
 void logit() {
   
-  
+  hello();
   if ( log_addr < (EPROM_SIZE-M)  ) {
 
        variance_stats();       
