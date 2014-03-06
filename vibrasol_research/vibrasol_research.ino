@@ -56,9 +56,10 @@
 #endif
 
 // General definition/parameters
+#define BIOF    false
 #define LIMIT                  30   // warn user if overpronated for longer that LIMIT samples sampled at 1/SAMPLE_TIME rate
-#define OVERHEAD               4
-#define SENSOR_PRESSURE_LEVEL  90  //150  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104 jose snadal 150
+#define OVERHEAD               6
+#define SENSOR_PRESSURE_LEVEL  75  // jumana 75 // 150  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104 jose snadal 150
 #define FOOT_ON_AIR            15   //50 ???  jose 20 vivobarefoot
 #define SAMPLE_TIME            300  // Sampling rate [ms]
 #define LOG_RATE               2.5    // time delay for logging bad-count [minutes]
@@ -68,6 +69,8 @@
 #define M                      8    // size of cycle write   
 #define TH0                    1    // zero thereshold
 #define CO                     1  // COMPRESION for sd , mean
+
+int led = 13;
 
 unsigned int p = 0;                          // variable to store the value coming from the sensor
 unsigned int cycle_warns = 0;             // total number of samples where p < th for more thanbadcount
@@ -97,9 +100,32 @@ boolean foot_down = false;
 
 // ---  ---  ---  ---  ---  ---  --- 
 
+int readVcc() {
+  long result;
+  char buf;
+  // Read 1.1V reference against AVcc
+  buf = ADMUX;
+  ADMUX = _BV(REFS0) | _BV(MUX3) | _BV(MUX2) | _BV(MUX1);
+  delay(2); // Wait for Vref to settle
+  ADCSRA |= _BV(ADSC); // Convert
+  while (bit_is_set(ADCSRA,ADSC));
+  result = ADCL;
+  result |= ADCH<<8;
+  result = 1126400L / result; // Back-calculate AVcc in mV
+  ADMUX = buf;  // restore ADMUX, because ofother ADC clients :)
+  return (int)(result);
+}
+
+// -----------------------
+
+
+
 //  EPROM MAP by BYTE
-//     0     1         2      3     4    5  6  7  8  9 10 11 .... EPROM_SIZE_1023 
-//   ( address )     (user id )    (stats log : 1 Byte per every 15 minutes   )
+//     0     1         2      3     4      5    ...  6  7  8  9 10 11 .... EPROM_SIZE_1023 
+//   ( address )     (user id )  (last voltage)  ... (stats log : 1 Byte per every 15 minutes   )
+
+
+
 
 void writeW(int where, int x) {
   int b1 = x % 255;
@@ -115,17 +141,24 @@ int readW( int from) {
 // -- SETUP
 void setup() {
 
+  pinMode(led, OUTPUT); 
+
   pinMode(MOTOR_PIN, OUTPUT); 
   Serial.begin(115200);
 
   log_addr = readW(0);
   Serial.print(   "number of logs in EEPROM = " );
   Serial.println(  log_addr - OVERHEAD    );
+
+  Serial.print(   "Vcc = " );
+  Serial.println(  readW(4)    );
   
   Serial.print(   "user_id = " );
   Serial.println(  readW(2)    );
+    
   hello();
   hello();
+    
 
   //send_data_usart();
   ///if (log_addr < (EPROM_SIZE -2*M) ) {
@@ -142,7 +175,7 @@ void hello(){
 
 void warn(){
   if ( elapsed - last_warn > LIMIT ) {
-    //vibrate(2,255,255);
+    if ( BIOF) { vibrate(2,255,255); }
     last_warn = elapsed;
     cycle_warns++;
     if (debug_flag){
@@ -152,8 +185,8 @@ void warn(){
   }
 }
 
-void malfunction(){
-  vibrate(3,2000,300);
+void batt_low(){
+  vibrate(5,2000,300);
   Serial.println( "Error ");
 }
 
@@ -186,7 +219,11 @@ void stepcounter(){
 
 void logit() {
   
-  hello();
+    hello();
+    int vcc = readVcc();
+    writeW(4,vcc);
+    if (vcc < 3.3) {batt_low();}
+
   if ( log_addr < (EPROM_SIZE-M)  ) {
 
        variance_stats();       
@@ -336,7 +373,7 @@ void sample() {
     debug_info();  
   }
    
-  if ( elapsed*(SAMPLE_TIME/100)  > (LOG_RATE*60*10)  ){ // compared in 10ths of seconds. int range is 32k check saturation!
+  if ( elapsed*(SAMPLE_TIME/100)  >= (LOG_RATE*60*10)  ){ // compared in 10ths of seconds. int range is 32k check saturation!
     logit();  // only logs the first ?  500 samples (150 s @ 1/3 Hz)
     elapsed = 0;
     last_warn = 0;
@@ -357,18 +394,19 @@ void send_data_usart(){
   Serial.println(readW(2));
 
   Serial.println("");
-  Serial.println("LIMIT \t SENSOR_PRESSURE_LEVEL \t FOOT_ON_AIR \t SAMPLE_TIME \t LOG_RATE \t N");
+  Serial.println("LIMIT \t SENSOR_PRSSR_LVL \t FOOT_ON_AIR \t SAMPLE (ms) \t LOG_RATE (x60s) \t N");
   Serial.print("\t");  Serial.print(LIMIT);
   Serial.print("\t");  Serial.print(SENSOR_PRESSURE_LEVEL);
   Serial.print("\t");  Serial.print(FOOT_ON_AIR);
   Serial.print("\t");  Serial.print(SAMPLE_TIME);
   Serial.print("\t");  Serial.print(LOG_RATE);
   Serial.print("\t");  Serial.println(N);
+  Serial.println("");
    
   int i = OVERHEAD;
   Serial.println("i\t avg\t sd\t nw\t max\t stp\t nl\t  nh\t  0s ");
   while  ( i<log_addr ){
-    Serial.print(i-3,DEC);
+    Serial.print(i-(OVERHEAD-1),DEC);
     Serial.print("\t");
     for (int k=0; k<M ;k++ ){
       
@@ -432,9 +470,18 @@ void loop() {
   // --- STATSD --- 
   
     if ( _max < p ) { _max = p; }
+    
     if ( p < TH0 )  {  _cyclezeroes =_cyclezeroes+1;   }
+    
     if ( p < FOOT_ON_AIR ) {  _nlow =_nlow + 1;   }
-    if ( p > SENSOR_PRESSURE_LEVEL ) {  _nhigh = _nhigh + 1;   }
+    
+    if ( p > SENSOR_PRESSURE_LEVEL )     {  
+        _nhigh = _nhigh + 1;  
+        digitalWrite(led, HIGH);
+    }else{
+        digitalWrite(led, LOW);
+    }
+
     stepcounter();
 
 }
