@@ -58,8 +58,8 @@
 // General definition/parameters
 #define LIMIT                  30   // warn user if overpronated for longer that LIMIT samples sampled at 1/SAMPLE_TIME rate
 #define OVERHEAD               4
-#define SENSOR_PRESSURE_LEVEL  150  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104 jose snadal 150
-#define FOOT_ON_AIR            50   // ???  jose 20 vivobarefoot
+#define SENSOR_PRESSURE_LEVEL  90  //150  // controls min pressure to activate motor. It is sensor/shoe dependent jose 104 jose snadal 150
+#define FOOT_ON_AIR            15   //50 ???  jose 20 vivobarefoot
 #define SAMPLE_TIME            300  // Sampling rate [ms]
 #define LOG_RATE               2.5    // time delay for logging bad-count [minutes]
 #define N                      500   // ! Over 500 not enough SRAM!!   
@@ -142,7 +142,7 @@ void hello(){
 
 void warn(){
   if ( elapsed - last_warn > LIMIT ) {
-    vibrate(2,255,255);
+    //vibrate(2,255,255);
     last_warn = elapsed;
     cycle_warns++;
     if (debug_flag){
